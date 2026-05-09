@@ -22,8 +22,8 @@ export function Navbar() {
     <header className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2 text-white">
-          <span className="text-lg">🪦</span>
-          <span className="font-bold">Code Graveyard</span>
+          <span className="text-2xl">🪦</span>
+          <span className="ml-1 text-lg font-display font-semibold">Code Graveyard</span>
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex">
