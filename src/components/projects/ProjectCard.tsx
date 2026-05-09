@@ -5,17 +5,17 @@ import { formatDistanceToNow, parseISO } from "date-fns";
 import { Eye } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { type MockProject } from "@/lib/mock-data";
+import type { ProjectWithRelations } from "@/types";
 import { cn } from "@/lib/utils";
 
-const stageStyles: Record<MockProject["stage_of_death"], string> = {
+const stageStyles: Record<ProjectWithRelations["stage_of_death"], string> = {
   idea: "bg-zinc-700 text-zinc-100",
   prototype: "bg-yellow-600/20 text-yellow-300 border border-yellow-500/40",
   mvp: "bg-blue-600/20 text-blue-300 border border-blue-500/40",
   launched: "bg-green-600/20 text-green-300 border border-green-500/40",
 };
 
-const reasonLabel: Record<MockProject["primary_reason"], string> = {
+const reasonLabel: Record<ProjectWithRelations["primary_reason"], string> = {
   lost_interest: "Lost Interest",
   scope_creep: "Scope Creep",
   technical_debt: "Technical Debt",
@@ -23,7 +23,7 @@ const reasonLabel: Record<MockProject["primary_reason"], string> = {
   market_timing: "Market Timing",
 };
 
-export function ProjectCard({ project }: { project: MockProject }) {
+export function ProjectCard({ project }: { project: ProjectWithRelations }) {
   return (
     <Link
       href={`/project/${project.id}`}
@@ -42,15 +42,14 @@ export function ProjectCard({ project }: { project: MockProject }) {
       <p className="mt-1 line-clamp-2 text-sm text-zinc-400">{project.tagline}</p>
 
       <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-zinc-400">
-        <span>⏱ {project.time_invested_hours} hours invested</span>
+        <span>⏱ {project.time_invested_hours ?? 0} hours invested</span>
         <span>
-          📅 Abandoned{" "}
-          {formatDistanceToNow(parseISO(project.date_abandoned), { addSuffix: true })}
+          📅 Abandoned {project.date_abandoned ? formatDistanceToNow(parseISO(project.date_abandoned), { addSuffix: true }) : "—"}
         </span>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {project.tags.slice(0, 3).map((tag) => (
+        {(project.tags ?? []).slice(0, 3).map((tag) => (
           <span
             key={tag.name}
             className="rounded-full border border-zinc-700 px-2 py-1 text-xs text-zinc-300"
@@ -58,9 +57,9 @@ export function ProjectCard({ project }: { project: MockProject }) {
             {tag.name}
           </span>
         ))}
-        {project.tags.length > 3 ? (
+        {((project.tags ?? []).length > 3) ? (
           <span className="rounded-full bg-zinc-800 px-2 py-1 text-xs text-zinc-300">
-            +{project.tags.length - 3} more
+            +{(project.tags ?? []).length - 3} more
           </span>
         ) : null}
       </div>
@@ -74,10 +73,10 @@ export function ProjectCard({ project }: { project: MockProject }) {
         ) : (
           <div className="flex items-center gap-2">
             <Avatar className="h-6 w-6 border border-zinc-700">
-              <AvatarImage src={project.user.avatar_url} alt={project.user.username} />
-              <AvatarFallback>{project.user.username.slice(0, 2).toUpperCase()}</AvatarFallback>
+              <AvatarImage src={project.user?.avatar_url ?? undefined} alt={project.user?.username ?? "user"} />
+              <AvatarFallback>{(project.user?.username ?? "?").slice(0, 2).toUpperCase()}</AvatarFallback>
             </Avatar>
-            <span className="text-sm text-zinc-300">@{project.user.username}</span>
+              <span className="text-sm text-zinc-300">@{project.user?.username ?? "unknown"}</span>
           </div>
         )}
         <div className="flex items-center gap-2 text-xs">

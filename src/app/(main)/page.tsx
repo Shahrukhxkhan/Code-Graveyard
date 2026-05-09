@@ -1,10 +1,84 @@
 import Link from "next/link";
+import { ProjectGrid } from "@/components/projects/ProjectGrid";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { ProjectFilters } from "@/components/projects/ProjectFilters";
 import { Button } from "@/components/ui/button";
 import { MOCK_PROJECTS, MOCK_STATS } from "@/lib/mock-data";
+import { createServerClient } from "@/lib/supabase/server";
+import type { ProjectWithRelations } from "@/types";
 
-export default function HomePage() {
+async function fetchCounts() {
+  try {
+    const supabase = createServerClient();
+    const projectsRes = await supabase.from("projects").select("id", { count: "exact", head: true });
+    const snippetsRes = await supabase.from("snippets").select("id", { count: "exact", head: true });
+    const adoptionsRes = await supabase.from("adoptions").select("id", { count: "exact", head: true });
+
+    return {
+      total_projects: projectsRes.count ?? MOCK_STATS.total_projects,
+      total_snippets: snippetsRes.count ?? MOCK_STATS.total_snippets,
+      total_adoptions: adoptionsRes.count ?? MOCK_STATS.total_adoptions,
+    };
+  } catch (e) {
+    return MOCK_STATS;
+  }
+}
+
+async function fetchProjects() {
+  try {
+    const supabase = createServerClient();
+    // Attempt to fetch projects with basic user and tags data. If DB isn't configured, fall back to mock.
+    const { data } = await supabase
+      .from("projects")
+      .select("*, users:users(id, username, avatar_url), project_tags(tag:tags(*))")
+      .order("created_at", { ascending: false })
+      .limit(12);
+
+    if (!data) return MOCK_PROJECTS as unknown as ProjectWithRelations[];
+
+    // Normalize results into ProjectWithRelations shape
+    const projects = data.map((p: any) => {
+      const tags = (p.project_tags ?? []).map((pt: any) => pt.tag).filter(Boolean);
+      return {
+        ...p,
+        user: p.users ?? null,
+        tags,
+      } as ProjectWithRelations;
+    });
+
+    return projects;
+  } catch (e) {
+    return MOCK_PROJECTS as unknown as ProjectWithRelations[];
+  }
+}
+
+export default async function HomePage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  const params = searchParams ?? {};
+  const stats = await fetchCounts();
+  const projectsRaw = await fetchProjects();
+
+  // Apply simple server-side filtering based on search params
+  const q = typeof params.q === "string" ? params.q.trim().toLowerCase() : "";
+  const stage = typeof params.stage === "string" ? params.stage : "";
+  const reason = typeof params.reason === "string" ? params.reason : "";
+  const adoptable = params.adoptable === "1" || params.adoptable === 1;
+  const tags = typeof params.tags === "string" ? params.tags.split(",").map((t) => t.toLowerCase()) : [];
+
+  const projects = projectsRaw.filter((p) => {
+    if (q) {
+      const hay = `${p.title} ${p.tagline} ${p.what_it_was}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (stage && stage !== "all" && p.stage_of_death !== stage) return false;
+    if (reason && reason !== "all" && p.primary_reason !== reason) return false;
+    if (adoptable && !p.is_adoptable) return false;
+    if (tags.length) {
+      const lowerTags = (p.tags ?? []).map((t) => t.name.toLowerCase());
+      if (!tags.every((tg) => lowerTags.includes(tg))) return false;
+    }
+    return true;
+  });
+
   return (
     <div className="w-full space-y-16 pb-8">
       <section className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950 px-6 py-16 text-center sm:px-10">
@@ -37,15 +111,15 @@ export default function HomePage() {
           </div>
           <div className="mt-10 flex flex-col items-center justify-center gap-4 text-center sm:flex-row sm:divide-x sm:divide-zinc-800">
             <div className="px-6">
-              <p className="text-2xl font-bold text-white">{MOCK_STATS.total_projects}</p>
+              <p className="text-2xl font-bold text-white">{stats.total_projects}</p>
               <p className="text-sm text-zinc-400">Projects Buried</p>
             </div>
             <div className="px-6">
-              <p className="text-2xl font-bold text-white">{MOCK_STATS.total_snippets}</p>
+              <p className="text-2xl font-bold text-white">{stats.total_snippets}</p>
               <p className="text-sm text-zinc-400">Snippets Salvaged</p>
             </div>
             <div className="px-6">
-              <p className="text-2xl font-bold text-white">{MOCK_STATS.total_adoptions}</p>
+              <p className="text-2xl font-bold text-white">{stats.total_adoptions}</p>
               <p className="text-sm text-zinc-400">Projects Adopted</p>
             </div>
           </div>
@@ -60,7 +134,7 @@ export default function HomePage() {
           </Link>
         </div>
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {MOCK_PROJECTS.slice(0, 3).map((project) => (
+          {projects.slice(0, 3).map((project) => (
             <ProjectCard key={project.id} project={project} />
           ))}
         </div>
@@ -69,11 +143,7 @@ export default function HomePage() {
       <section id="graveyard">
         <h2 className="mb-6 text-2xl font-semibold text-white">Browse the Graveyard</h2>
         <ProjectFilters />
-        <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {MOCK_PROJECTS.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
+        <ProjectGrid projects={projects} />
       </section>
 
       <section className="rounded-2xl border border-violet-500/30 bg-gradient-to-r from-zinc-900 to-violet-950/30 px-6 py-12 text-center">
