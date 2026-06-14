@@ -24,7 +24,7 @@ async function fetchCounts() {
   }
 }
 
-async function fetchProjects() {
+async function fetchProjects(): Promise<ProjectWithRelations[]> {
   try {
     const supabase = createServerClient();
     // Attempt to fetch projects with basic user and tags data. If DB isn't configured, fall back to mock.
@@ -61,7 +61,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Record
   const q = typeof params.q === "string" ? params.q.trim().toLowerCase() : "";
   const stage = typeof params.stage === "string" ? params.stage : "";
   const reason = typeof params.reason === "string" ? params.reason : "";
-  const adoptable = params.adoptable === "1" || params.adoptable === 1;
+  const adoptable = params.adoptable === "1";
   const tags = typeof params.tags === "string" ? params.tags.split(",").map((t) => t.toLowerCase()) : [];
 
   const projects = projectsRaw.filter((p) => {

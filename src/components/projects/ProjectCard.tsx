@@ -8,19 +8,25 @@ import { Badge } from "@/components/ui/badge";
 import type { ProjectWithRelations } from "@/types";
 import { cn } from "@/lib/utils";
 
-const stageStyles: Record<ProjectWithRelations["stage_of_death"], string> = {
+const stageStyles: Record<string, string> = {
   idea: "bg-zinc-700 text-zinc-100",
   prototype: "bg-yellow-600/20 text-yellow-300 border border-yellow-500/40",
   mvp: "bg-blue-600/20 text-blue-300 border border-blue-500/40",
   launched: "bg-green-600/20 text-green-300 border border-green-500/40",
+  unknown: "bg-zinc-800 text-zinc-400",
 };
 
-const reasonLabel: Record<ProjectWithRelations["primary_reason"], string> = {
+const reasonLabel: Record<string, string> = {
   lost_interest: "Lost Interest",
   scope_creep: "Scope Creep",
   technical_debt: "Technical Debt",
   no_time: "No Time",
   market_timing: "Market Timing",
+  team_issues: "Team Issues",
+  financial: "Financial",
+  technical_blocker: "Technical Blocker",
+  pivoted: "Pivoted",
+  other: "Other",
 };
 
 export function ProjectCard({ project }: { project: ProjectWithRelations }) {
@@ -30,11 +36,11 @@ export function ProjectCard({ project }: { project: ProjectWithRelations }) {
       className="graveyard-card block cursor-pointer p-5 transition duration-200 hover:scale-[1.01]"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
-        <Badge className={cn("stage-badge", stageStyles[project.stage_of_death])}>
-          {project.stage_of_death}
+        <Badge className={cn("stage-badge", project.stage_of_death ? stageStyles[project.stage_of_death] : "bg-zinc-800 text-zinc-400")}>
+          {project.stage_of_death ?? "unknown"}
         </Badge>
         <Badge className="border border-red-500/30 bg-red-600/20 text-red-300">
-          {reasonLabel[project.primary_reason]}
+          {project.primary_reason ? (reasonLabel[project.primary_reason] ?? project.primary_reason) : "Other"}
         </Badge>
       </div>
 

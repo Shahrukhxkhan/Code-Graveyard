@@ -9,11 +9,15 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { MOCK_PROJECTS, MOCK_SNIPPETS, MOCK_USERS } from "@/lib/mock-data";
 
+import type { ProjectWithRelations } from "@/types";
+
 export default function ProfilePage({ params }: { params: { username: string } }) {
   const user = MOCK_USERS.find((item) => item.username === params.username);
   if (!user) notFound();
 
-  const userProjects = MOCK_PROJECTS.filter((project) => project.user.username === user.username);
+  const userProjects = MOCK_PROJECTS.filter(
+    (project) => project.user.username === user.username,
+  ) as unknown as ProjectWithRelations[];
   const userSnippets = MOCK_SNIPPETS.filter((snippet) =>
     userProjects.some((project) => project.id === snippet.project_id),
   );
@@ -56,7 +60,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
           </div>
           <div className="px-6 py-3">
             <p className="text-xl font-semibold text-white">
-              {userProjects.reduce((total, project) => total + project.adoption_count, 0)}
+              {userProjects.reduce((total, project) => total + ((project as any).adoption_count ?? 0), 0)}
             </p>
             <p className="text-sm text-zinc-400">Adoptions</p>
           </div>
@@ -90,7 +94,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
           <div>
             <h2 className="mb-4 text-lg font-semibold text-white">Saved Projects</h2>
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {MOCK_PROJECTS.slice(0, 3).map((project) => (
+              {(MOCK_PROJECTS.slice(0, 3) as unknown as ProjectWithRelations[]).map((project) => (
                 <ProjectCard key={project.id} project={project} />
               ))}
             </div>
