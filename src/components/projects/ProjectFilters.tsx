@@ -27,15 +27,39 @@ export function ProjectFilters() {
   useEffect(() => {
     const q = searchParams.get("q") ?? "";
     const s = searchParams.get("stage") ?? "all";
-    const r = searchParams.get("reason") ?? "all";
-    const a = searchParams.get("adoptable") === "1";
-    setQuery(q);
+    const r = searchParams.get("cause") ?? searchParams.get("reason") ?? "all";
+    const a = searchParams.get("adoptable") === "true" || searchParams.get("adoptable") === "1";
+    
+    setQuery((prev) => (prev !== q ? q : prev));
     setStage(s);
     setReason(r);
     setAdoptableOnly(a);
     const tags = searchParams.get("tags")?.split(",").filter(Boolean) ?? [];
     setSelectedTags(tags);
   }, [searchParams]);
+
+  // Debounce query input and sync to URL
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const params = new URLSearchParams(Array.from(searchParams.entries()));
+      const trimmedQuery = query.trim();
+      
+      if (trimmedQuery) {
+        params.set("q", trimmedQuery);
+      } else {
+        params.delete("q");
+      }
+      
+      const currentQ = searchParams.get("q") ?? "";
+      if (currentQ !== trimmedQuery) {
+        router.replace(`${window.location.pathname}?${params.toString()}`);
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [query, router, searchParams]);
 
   const hasFilters = useMemo(() => {
     return query.length > 0 || stage !== "all" || reason !== "all" || adoptableOnly;
@@ -82,7 +106,8 @@ export function ProjectFilters() {
             const v = value ?? "all";
             setReason(v);
             const params = new URLSearchParams(Array.from(searchParams.entries()));
-            params.set("reason", v);
+            params.set("cause", v);
+            params.delete("reason");
             router.replace(`${window.location.pathname}?${params.toString()}`);
           }}
         >
@@ -106,7 +131,7 @@ export function ProjectFilters() {
             const next = !adoptableOnly;
             setAdoptableOnly(next);
             const params = new URLSearchParams(Array.from(searchParams.entries()));
-            if (next) params.set("adoptable", "1"); else params.delete("adoptable");
+            if (next) params.set("adoptable", "true"); else params.delete("adoptable");
             router.replace(`${window.location.pathname}?${params.toString()}`);
           }}
           className={adoptableOnly ? "bg-violet-600 hover:bg-violet-500" : "bg-zinc-800 hover:bg-zinc-700"}

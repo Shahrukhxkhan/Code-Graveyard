@@ -24,13 +24,34 @@ async function fetchCounts() {
   }
 }
 
-async function fetchProjects(): Promise<ProjectWithRelations[]> {
+interface FetchFilters {
+  q?: string;
+  stage?: string;
+  cause?: string;
+  adoptable?: boolean;
+}
+
+async function fetchProjects(filters: FetchFilters): Promise<ProjectWithRelations[]> {
   try {
     const supabase = createServerClient();
-    // Attempt to fetch projects with basic user and tags data. If DB isn't configured, fall back to mock.
-    const { data } = await supabase
+    let query = supabase
       .from("projects")
-      .select("*, users:users(id, username, avatar_url), project_tags(tag:tags(*))")
+      .select("*, users:users(id, username, avatar_url), project_tags(tag:tags(*))");
+
+    if (filters.q) {
+      query = query.or(`title.ilike.%${filters.q}%,tagline.ilike.%${filters.q}%`);
+    }
+    if (filters.stage && filters.stage !== "all") {
+      query = query.eq("stage_of_death", filters.stage);
+    }
+    if (filters.cause && filters.cause !== "all") {
+      query = query.eq("primary_reason", filters.cause);
+    }
+    if (filters.adoptable) {
+      query = query.eq("is_adoptable", true);
+    }
+
+    const { data } = await query
       .order("created_at", { ascending: false })
       .limit(12);
 
@@ -48,36 +69,50 @@ async function fetchProjects(): Promise<ProjectWithRelations[]> {
 
     return projects;
   } catch (e) {
-    return MOCK_PROJECTS as unknown as ProjectWithRelations[];
+    // Fall back to mock data, applying filters in-memory
+    let filtered = MOCK_PROJECTS;
+    
+    if (filters.q) {
+      const qLower = filters.q.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.title.toLowerCase().includes(qLower) ||
+          p.tagline.toLowerCase().includes(qLower)
+      );
+    }
+    if (filters.stage && filters.stage !== "all") {
+      filtered = filtered.filter((p) => p.stage_of_death === filters.stage);
+    }
+    if (filters.cause && filters.cause !== "all") {
+      filtered = filtered.filter((p) => p.primary_reason === filters.cause);
+    }
+    if (filters.adoptable) {
+      filtered = filtered.filter((p) => p.is_adoptable === true);
+    }
+
+    return filtered as unknown as ProjectWithRelations[];
   }
 }
 
 export default async function HomePage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
   const params = searchParams ?? {};
   const stats = await fetchCounts();
-  const projectsRaw = await fetchProjects();
 
-  // Apply simple server-side filtering based on search params
-  const q = typeof params.q === "string" ? params.q.trim().toLowerCase() : "";
+  // Apply server-side filtering based on search params
+  const q = typeof params.q === "string" ? params.q.trim() : "";
   const stage = typeof params.stage === "string" ? params.stage : "";
-  const reason = typeof params.reason === "string" ? params.reason : "";
-  const adoptable = params.adoptable === "1";
+  const cause = typeof params.cause === "string" ? params.cause : (typeof params.reason === "string" ? params.reason : "");
+  const adoptable = params.adoptable === "true" || params.adoptable === "1";
   const tags = typeof params.tags === "string" ? params.tags.split(",").map((t) => t.toLowerCase()) : [];
 
-  const projects = projectsRaw.filter((p) => {
-    if (q) {
-      const hay = `${p.title} ${p.tagline} ${p.what_it_was}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    if (stage && stage !== "all" && p.stage_of_death !== stage) return false;
-    if (reason && reason !== "all" && p.primary_reason !== reason) return false;
-    if (adoptable && !p.is_adoptable) return false;
-    if (tags.length) {
+  let projects = await fetchProjects({ q, stage, cause, adoptable });
+
+  if (tags.length) {
+    projects = projects.filter((p) => {
       const lowerTags = (p.tags ?? []).map((t) => t.name.toLowerCase());
-      if (!tags.every((tg) => lowerTags.includes(tg))) return false;
-    }
-    return true;
-  });
+      return tags.every((tg) => lowerTags.includes(tg));
+    });
+  }
 
   return (
     <div className="w-full space-y-16 pb-8">
