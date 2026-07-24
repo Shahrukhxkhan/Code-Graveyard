@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -64,15 +65,17 @@ export function Navbar() {
             /* Skeleton while session is resolving */
             <div className="h-8 w-8 animate-pulse rounded-full bg-zinc-700" />
           ) : user ? (
-            /* Logged-in: avatar + dropdown */
-            <DropdownMenu>
-              <DropdownMenuTrigger className="rounded-full ring-offset-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
-                <Avatar className="h-8 w-8 border border-zinc-700">
-                  <AvatarImage src={avatarSrc} alt={profile?.username ?? "User"} />
-                  <AvatarFallback>{avatarInitials}</AvatarFallback>
-                </Avatar>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-white">
+            /* Logged-in: Notification bell + avatar dropdown */
+            <div className="flex items-center gap-2">
+              <NotificationBell />
+              <DropdownMenu>
+                <DropdownMenuTrigger className="rounded-full ring-offset-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+                  <Avatar className="h-8 w-8 border border-zinc-700">
+                    <AvatarImage src={avatarSrc} alt={profile?.username ?? "User"} />
+                    <AvatarFallback>{avatarInitials}</AvatarFallback>
+                  </Avatar>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="border-zinc-800 bg-zinc-900 text-white">
                 {profile?.username && (
                   <DropdownMenuItem
                     className="cursor-pointer"
@@ -90,6 +93,7 @@ export function Navbar() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
           ) : (
             /* Logged-out: Sign In button */
             <Button

@@ -394,3 +394,153 @@ create index if not exists idx_projects_created_at
 create index if not exists idx_projects_discovery_composite
   on public.projects (stage_of_death, primary_reason, is_adoptable, created_at desc);
 
+-- ============================================================================
+-- NOTIFICATIONS SYSTEM & EMAIL DISPATCHER
+-- ============================================================================
+
+alter table public.users
+  add column if not exists email_notifications_enabled boolean default true;
+
+create table if not exists public.notifications (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.users(id) on delete cascade not null,
+  type text not null,
+  title text not null,
+  body text not null,
+  related_project_id uuid references public.projects(id) on delete cascade,
+  related_adoption_id uuid references public.adoptions(id) on delete cascade,
+  is_read boolean default false,
+  created_at timestamptz default now()
+);
+
+alter table public.notifications enable row level security;
+
+create policy "Users can view own notifications"
+  on public.notifications for select
+  using (auth.uid() = user_id);
+
+create policy "Users can update own notifications"
+  on public.notifications for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "System and trigger insert notifications"
+  on public.notifications for insert
+  with check (true);
+
+-- Email Dispatcher Function (Fluggable & Fail-Safe)
+create or replace function dispatch_email_notification(
+  p_user_id uuid,
+  p_subject text,
+  p_body text
+) returns void as $$
+declare
+  v_email_enabled boolean;
+  v_user_email text;
+  v_app_url text := coalesce(current_setting('app.settings.site_url', true), 'http://localhost:3000');
+  v_smtp_flag text := coalesce(current_setting('app.settings.enable_email', true), 'false');
+begin
+  select coalesce(email_notifications_enabled, true) into v_email_enabled
+  from public.users where id = p_user_id;
+
+  if not v_email_enabled or v_smtp_flag != 'true' then
+    return;
+  end if;
+
+  begin
+    select email into v_user_email from auth.users where id = p_user_id;
+  exception when others then
+    v_user_email := null;
+  end;
+
+  if v_user_email is null then
+    return;
+  end if;
+
+  begin
+    perform net.http_post(
+      url := v_app_url || '/api/notifications/email',
+      headers := '{"Content-Type": "application/json"}'::jsonb,
+      body := jsonb_build_object(
+        'to', v_user_email,
+        'subject', p_subject,
+        'body', p_body
+      )
+    );
+  exception when others then
+    null;
+  end;
+end;
+$$ language plpgsql security definer;
+
+-- Trigger Function 1: Notify Project Owner on New Adoption Request
+create or replace function notify_owner_on_adoption_insert()
+returns trigger as $$
+declare
+  v_owner_id uuid;
+  v_project_title text;
+begin
+  select user_id, title into v_owner_id, v_project_title
+  from public.projects
+  where id = NEW.project_id;
+
+  if v_owner_id is not null then
+    insert into public.notifications (
+      user_id, type, title, body, related_project_id, related_adoption_id
+    ) values (
+      v_owner_id, 'adoption_request', 'New Adoption Request',
+      'A developer requested to adopt "' || coalesce(v_project_title, 'your project') || '".',
+      NEW.project_id, NEW.id
+    );
+
+    perform dispatch_email_notification(
+      v_owner_id,
+      'New Adoption Request for ' || coalesce(v_project_title, 'your project'),
+      'A developer has submitted a request to adopt "' || coalesce(v_project_title, 'your project') || '". Visit Code-Graveyard to review the application.'
+    );
+  end if;
+
+  return NEW;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists trigger_notify_owner_on_adoption on public.adoptions;
+create trigger trigger_notify_owner_on_adoption
+  after insert on public.adoptions
+  for each row execute function notify_owner_on_adoption_insert();
+
+-- Trigger Function 2: Notify Adopter on Adoption Status Update
+create or replace function notify_adopter_on_adoption_status_update()
+returns trigger as $$
+declare
+  v_project_title text;
+begin
+  if OLD.status is distinct from NEW.status then
+    select title into v_project_title
+    from public.projects
+    where id = NEW.project_id;
+
+    insert into public.notifications (
+      user_id, type, title, body, related_project_id, related_adoption_id
+    ) values (
+      NEW.adopter_id, 'adoption_status', 'Adoption Request ' || initcap(NEW.status::text),
+      'Your request to adopt "' || coalesce(v_project_title, 'the project') || '" was ' || NEW.status::text || '.',
+      NEW.project_id, NEW.id
+    );
+
+    perform dispatch_email_notification(
+      NEW.adopter_id,
+      'Adoption Request ' || initcap(NEW.status::text),
+      'Your request to adopt "' || coalesce(v_project_title, 'the project') || '" was ' || NEW.status::text || '. Visit Code-Graveyard for details.'
+    );
+  end if;
+
+  return NEW;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists trigger_notify_adopter_on_status_update on public.adoptions;
+create trigger trigger_notify_adopter_on_status_update
+  after update on public.adoptions
+  for each row execute function notify_adopter_on_adoption_status_update();
+
