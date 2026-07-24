@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
-import { sanitizeProject } from "@/lib/utils";
+import { sanitizeProject, type ViewerRole } from "@/lib/utils";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = createServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -11,33 +11,52 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const roleQuery = searchParams.get("role"); // 'adopter' | 'owner'
+
     // Fetch adoptions where current user is adopter or project owner
     const { data, error } = await supabase
       .from("adoptions")
-      .select("*, project:projects(*, users:users(id, username, avatar_url)), adopter:users!adoptions_adopter_id_fkey(id, username, avatar_url, full_name)");
+      .select("*, project:projects(*, users:users(id, username, avatar_url, full_name)), adopter:users!adoptions_adopter_id_fkey(id, username, avatar_url, full_name)")
+      .order("created_at", { ascending: false });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const sanitizedAdoptions = (data || []).map((adoption: any) => {
+    const filteredAdoptions = (data || []).filter((adoption: any) => {
+      const isAdopter = adoption.adopter_id === user.id;
       const isOwner = adoption.project?.user_id === user.id;
-      
-      // If user is not the project owner, sanitize project object if anonymous
+
+      if (roleQuery === "adopter") return isAdopter;
+      if (roleQuery === "owner") return isOwner;
+      return isAdopter || isOwner;
+    });
+
+    const sanitizedAdoptions = filteredAdoptions.map((adoption: any) => {
+      const isOwner = adoption.project?.user_id === user.id;
+      const viewerRole: ViewerRole = isOwner ? "owner" : "adopter";
+
       let project = adoption.project;
       if (project) {
         project = {
           ...project,
           user: project.users ?? null,
         };
-        if (!isOwner) {
-          project = sanitizeProject(project);
-        }
+        // Role-aware sanitization: owner retains metadata, adopter sees scrubbed metadata if anonymous
+        project = sanitizeProject(project, { viewerRole });
       }
 
       return {
-        ...adoption,
+        id: adoption.id,
+        project_id: adoption.project_id,
+        adopter_id: adoption.adopter_id,
+        message: adoption.message,
+        status: adoption.status,
+        created_at: adoption.created_at,
+        updated_at: adoption.updated_at,
         project,
+        adopter: adoption.adopter ?? null,
       };
     });
 
