@@ -1,8 +1,90 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { sanitizeProjects, sanitizeProject } from "@/lib/utils";
 
-export async function GET() {
-  return NextResponse.json({ message: "Not implemented" }, { status: 501 });
+export async function GET(request: Request) {
+  try {
+    const supabase = createServerClient();
+    const { searchParams } = new URL(request.url);
+
+    const id = searchParams.get("id");
+    const q = searchParams.get("q");
+    const stage = searchParams.get("stage");
+    const cause = searchParams.get("cause") || searchParams.get("reason");
+    const adoptable = searchParams.get("adoptable") === "true";
+
+    if (id) {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*, users:users(id, username, avatar_url, full_name), project_tags(tag:tags(*))")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      if (!data) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+
+      const tags = (data.project_tags ?? []).map((pt: any) => pt.tag).filter(Boolean);
+      const project = sanitizeProject({
+        ...data,
+        user: data.users ?? null,
+        tags,
+      });
+
+      return NextResponse.json(project);
+    }
+
+    const pageParam = parseInt(searchParams.get("page") || "1", 10);
+    const limitParam = parseInt(searchParams.get("limit") || "12", 10);
+    const page = pageParam > 0 ? pageParam : 1;
+    const limit = limitParam > 0 && limitParam <= 100 ? limitParam : 12;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    const listColumns = "id, title, tagline, stage_of_death, primary_reason, time_invested_hours, date_abandoned, is_adoptable, is_anonymous, view_count, created_at, user_id, users:users(id, username, avatar_url, full_name), project_tags(tag:tags(*))";
+
+    let query = supabase
+      .from("projects")
+      .select(listColumns);
+
+    if (q) {
+      query = query.or(`title.ilike.%${q}%,tagline.ilike.%${q}%`);
+    }
+    if (stage && stage !== "all") {
+      query = query.eq("stage_of_death", stage);
+    }
+    if (cause && cause !== "all") {
+      query = query.eq("primary_reason", cause);
+    }
+    if (adoptable) {
+      query = query.eq("is_adoptable", true);
+    }
+
+    const { data, error } = await query
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    const projects = (data || []).map((p: any) => {
+      const tags = (p.project_tags ?? []).map((pt: any) => pt.tag).filter(Boolean);
+      return {
+        ...p,
+        user: p.users ?? null,
+        tags,
+      };
+    });
+
+    return NextResponse.json(sanitizeProjects(projects));
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || "Internal Server Error" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -110,7 +192,7 @@ export async function POST(request: Request) {
             .in("name", namesToQuery);
 
           if (dbTags) {
-            dbTags.forEach((t) => tagIds.push(t.id));
+            dbTags.forEach((t: { id: string }) => tagIds.push(t.id));
           }
         }
 

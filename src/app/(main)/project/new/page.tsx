@@ -169,7 +169,7 @@ export default function NewProjectPage() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Stage when abandoned</Label>
-                <Select value={stage} onValueChange={setStage}>
+                <Select value={stage} onValueChange={(val) => setStage(val ?? "")}>
                   <SelectTrigger className="border-zinc-700 bg-zinc-950">
                     <SelectValue placeholder="Select stage" />
                   </SelectTrigger>
@@ -183,7 +183,7 @@ export default function NewProjectPage() {
               </div>
               <div className="space-y-2">
                 <Label>Primary reason for abandonment</Label>
-                <Select value={reason} onValueChange={setReason}>
+                <Select value={reason} onValueChange={(val) => setReason(val ?? "")}>
                   <SelectTrigger className="border-zinc-700 bg-zinc-950">
                     <SelectValue placeholder="Select reason" />
                   </SelectTrigger>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { format, formatDistanceToNow, parseISO } from "date-fns";
 import { Bookmark, Copy, ExternalLink, Share2 } from "lucide-react";
@@ -82,6 +82,37 @@ export function ProjectDetailClient({ project, snippets }: Props) {
   const [saved, setSaved] = useState(false);
   const [adoptionMessage, setAdoptionMessage] = useState("");
   const [adoptionLoading, setAdoptionLoading] = useState(false);
+
+  // ── Anti-Inflation View Count Increment ──────────────────────────────────
+  // Uses a combination of client-side sessionStorage debouncing and a persistent
+  // browser fingerprint (for anonymous users) or auth user ID. The server-side RPC
+  // enforces atomic deduplication via the `project_views` table (one increment/day).
+  useEffect(() => {
+    if (!project?.id) return;
+
+    const sessionGuardKey = `cg_viewed_${project.id}`;
+    if (typeof window !== "undefined" && window.sessionStorage.getItem(sessionGuardKey)) {
+      return;
+    }
+
+    let viewerFingerprint = user?.id || "";
+    if (typeof window !== "undefined") {
+      if (!viewerFingerprint) {
+        viewerFingerprint = window.localStorage.getItem("cg_viewer_fp") || "";
+        if (!viewerFingerprint) {
+          viewerFingerprint = `anon_${Math.random().toString(36).substring(2)}_${Date.now()}`;
+          window.localStorage.setItem("cg_viewer_fp", viewerFingerprint);
+        }
+      }
+      window.sessionStorage.setItem(sessionGuardKey, "1");
+    }
+
+    const supabase = createClient();
+    supabase.rpc("increment_view_count", {
+      project_id: project.id,
+      viewer_fingerprint: viewerFingerprint,
+    }).then(() => {});
+  }, [project?.id, user?.id]);
 
   // ── Snippet copy ──────────────────────────────────────────────────────────
   const handleCopy = async (code: string, id: string) => {

@@ -209,30 +209,57 @@ create policy "Users can view adoptions for their projects"
   on public.adoptions for select
   using (
     auth.uid() = adopter_id or
-    auth.uid() = (
-      select user_id from public.projects
-      where id = project_id
-    )
-  );
-create policy "Authenticated users can create adoptions"
-  on public.adoptions for insert
-  with check (auth.uid() = adopter_id);
-create policy "Project owner can update adoption status"
-  on public.adoptions for update
-  using (
-    auth.uid() = (
-      select user_id from public.projects
-      where id = project_id
+    exists (
+      select 1 from public.projects
+      where id = adoptions.project_id and user_id = auth.uid()
     )
   );
 
--- Saves policies
+create policy "Authenticated users can create adoptions"
+  on public.adoptions for insert
+  with check (
+    auth.uid() = adopter_id and
+    (status is null or status = 'pending'::adoption_status) and
+    not exists (
+      select 1 from public.projects
+      where id = adoptions.project_id and user_id = auth.uid()
+    )
+  );
+
+create policy "Project owner can update adoption status"
+  on public.adoptions for update
+  using (
+    exists (
+      select 1 from public.projects
+      where id = adoptions.project_id and user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.projects
+      where id = adoptions.project_id and user_id = auth.uid()
+    )
+  );
+
+create policy "Adopter or project owner can delete adoptions"
+  on public.adoptions for delete
+  using (
+    auth.uid() = adopter_id or
+    exists (
+      select 1 from public.projects
+      where id = adoptions.project_id and user_id = auth.uid()
+    )
+  );
+
+-- Saves policies (Explicit SELECT, INSERT, DELETE; UPDATE defaults to DENY)
 create policy "Users can view own saves"
   on public.saves for select
   using (auth.uid() = user_id);
+
 create policy "Users can insert own saves"
   on public.saves for insert
   with check (auth.uid() = user_id);
+
 create policy "Users can delete own saves"
   on public.saves for delete
   using (auth.uid() = user_id);
@@ -294,12 +321,76 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_user();
 
--- Increment view count function
-create or replace function increment_view_count(project_id uuid)
-returns void as $$
+-- PROJECT VIEWS DEDUPLICATION TABLE
+create table if not exists public.project_views (
+  id uuid default gen_random_uuid() primary key,
+  project_id uuid references public.projects(id) on delete cascade not null,
+  viewer_fingerprint text not null,
+  viewed_at timestamptz default now()
+);
+
+-- Unique index to prevent duplicate view increments per (project, viewer, date)
+create unique index if not exists idx_project_views_dedup
+  on public.project_views (project_id, viewer_fingerprint, ((viewed_at at time zone 'UTC')::date));
+
+alter table public.project_views enable row level security;
+
+-- ANTI-INFLATION INCREMENT VIEW COUNT RPC
+-- Uses insert-or-ignore on public.project_views to ensure a viewer (auth.uid() or session fingerprint)
+-- can only increment a project's view_count once per calendar day.
+create or replace function increment_view_count(
+  project_id uuid,
+  viewer_fingerprint text default null
+)
+returns boolean as $$
+declare
+  v_fingerprint text;
 begin
-  update public.projects
-  set view_count = view_count + 1
-  where id = project_id;
+  -- Resolve viewer fingerprint: explicit parameter > auth.uid() > default fallback
+  v_fingerprint := coalesce(
+    nullif(trim(viewer_fingerprint), ''),
+    auth.uid()::text,
+    'anonymous-session'
+  );
+
+  -- Atomic insert-or-ignore into deduplication table
+  insert into public.project_views (project_id, viewer_fingerprint, viewed_at)
+  values (project_id, v_fingerprint, now())
+  on conflict (project_id, viewer_fingerprint, ((viewed_at at time zone 'UTC')::date))
+  do nothing;
+
+  -- Only increment view_count if this view is new today
+  if found then
+    update public.projects
+    set view_count = coalesce(view_count, 0) + 1
+    where id = project_id;
+    return true;
+  end if;
+
+  return false;
 end;
 $$ language plpgsql security definer;
+
+-- ============================================================================
+-- DISCOVERY & FILTERING PERFORMANCE INDEXES
+-- ============================================================================
+create extension if not exists pg_trgm;
+
+create index if not exists idx_projects_title_trgm
+  on public.projects using gin (title gin_trgm_ops);
+
+create index if not exists idx_projects_tagline_trgm
+  on public.projects using gin (tagline gin_trgm_ops);
+
+create index if not exists idx_project_tags_project_tag
+  on public.project_tags (project_id, tag_id);
+
+create index if not exists idx_project_tags_tag_project
+  on public.project_tags (tag_id, project_id);
+
+create index if not exists idx_projects_created_at
+  on public.projects (created_at desc);
+
+create index if not exists idx_projects_discovery_composite
+  on public.projects (stage_of_death, primary_reason, is_adoptable, created_at desc);
+

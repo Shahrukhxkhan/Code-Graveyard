@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { MOCK_PROJECTS, MOCK_STATS } from "@/lib/mock-data";
 import { createServerClient } from "@/lib/supabase/server";
 import type { ProjectWithRelations } from "@/types";
+import { sanitizeProjects } from "@/lib/utils";
 
 async function fetchCounts() {
   try {
@@ -29,14 +30,18 @@ interface FetchFilters {
   stage?: string;
   cause?: string;
   adoptable?: boolean;
+  page?: number;
+  limit?: number;
 }
+
+const CARD_PROJECT_COLUMNS = "id, title, tagline, stage_of_death, primary_reason, time_invested_hours, date_abandoned, is_adoptable, is_anonymous, view_count, created_at, user_id, users:users(id, username, avatar_url), project_tags(tag:tags(*))";
 
 async function fetchProjects(filters: FetchFilters): Promise<ProjectWithRelations[]> {
   try {
     const supabase = createServerClient();
     let query = supabase
       .from("projects")
-      .select("*, users:users(id, username, avatar_url), project_tags(tag:tags(*))");
+      .select(CARD_PROJECT_COLUMNS);
 
     if (filters.q) {
       query = query.or(`title.ilike.%${filters.q}%,tagline.ilike.%${filters.q}%`);
@@ -51,9 +56,14 @@ async function fetchProjects(filters: FetchFilters): Promise<ProjectWithRelation
       query = query.eq("is_adoptable", true);
     }
 
+    const page = filters.page && filters.page > 0 ? filters.page : 1;
+    const limit = filters.limit && filters.limit > 0 ? filters.limit : 12;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
     const { data } = await query
       .order("created_at", { ascending: false })
-      .limit(12);
+      .range(from, to);
 
     if (!data) return MOCK_PROJECTS as unknown as ProjectWithRelations[];
 
@@ -67,7 +77,7 @@ async function fetchProjects(filters: FetchFilters): Promise<ProjectWithRelation
       } as ProjectWithRelations;
     });
 
-    return projects;
+    return sanitizeProjects(projects);
   } catch (e) {
     // Fall back to mock data, applying filters in-memory
     let filtered = MOCK_PROJECTS;
@@ -90,7 +100,7 @@ async function fetchProjects(filters: FetchFilters): Promise<ProjectWithRelation
       filtered = filtered.filter((p) => p.is_adoptable === true);
     }
 
-    return filtered as unknown as ProjectWithRelations[];
+    return sanitizeProjects(filtered as unknown as ProjectWithRelations[]);
   }
 }
 

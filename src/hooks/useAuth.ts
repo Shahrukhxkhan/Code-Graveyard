@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import type { User as SupabaseUser } from "@supabase/supabase-js"
+import type { AuthChangeEvent, Session, User as SupabaseUser } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@/types"
 
@@ -18,9 +18,9 @@ export function useAuth() {
         .from("users")
         .select("*")
         .eq("id", userId)
-        .maybeSingle<User>()
+        .maybeSingle()
 
-      setProfile(data ?? null)
+      setProfile((data as User) ?? null)
     },
     [supabase],
   )
@@ -53,7 +53,7 @@ export function useAuth() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
       const currentUser = session?.user ?? null
       setUser(currentUser)
 

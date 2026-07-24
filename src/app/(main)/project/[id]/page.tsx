@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { MOCK_PROJECTS, MOCK_SNIPPETS } from "@/lib/mock-data";
 import { ProjectDetailClient } from "@/components/projects/ProjectDetailClient";
 import type { ProjectDisplay, SnippetDisplay } from "@/components/projects/ProjectDetailClient";
+import { sanitizeProject } from "@/lib/utils";
 
 async function fetchProjectData(
   id: string,
@@ -23,21 +24,16 @@ async function fetchProjectData(
         .map((pt: any) => pt.tag)
         .filter(Boolean);
 
-      const project: ProjectDisplay = {
+      const project: ProjectDisplay = sanitizeProject({
         ...data,
         user: data.users ?? null,
         tags,
-      };
+      });
 
       const { data: snippetsData } = await supabase
         .from("snippets")
         .select("*")
         .eq("project_id", id);
-
-      // Fire-and-forget — increment view count via DB function
-      supabase
-        .rpc("increment_view_count", { project_id: id })
-        .then(() => {});
 
       return {
         project,
@@ -55,7 +51,7 @@ async function fetchProjectData(
   const mockSnippets = MOCK_SNIPPETS.filter((s) => s.project_id === id);
 
   return {
-    project: mockProject as unknown as ProjectDisplay,
+    project: sanitizeProject(mockProject as unknown as ProjectDisplay),
     snippets: mockSnippets as unknown as SnippetDisplay[],
   };
 }
