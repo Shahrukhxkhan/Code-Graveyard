@@ -11,6 +11,8 @@ import { MOCK_PROJECTS, MOCK_SNIPPETS, MOCK_USERS } from "@/lib/mock-data";
 
 import type { ProjectWithRelations } from "@/types";
 
+import { AdoptionsDashboard } from "@/components/profile/AdoptionsDashboard";
+
 export default function ProfilePage({ params }: { params: { username: string } }) {
   const user = MOCK_USERS.find((item) => item.username === params.username);
   if (!user) notFound();
@@ -70,9 +72,14 @@ export default function ProfilePage({ params }: { params: { username: string } }
       <Tabs defaultValue="projects" className="w-full">
         <TabsList className="bg-zinc-900">
           <TabsTrigger value="projects">Buried Projects ({userProjects.length})</TabsTrigger>
+          <TabsTrigger value="adoptions">Adoptions Management</TabsTrigger>
           <TabsTrigger value="saved">Saved</TabsTrigger>
           <TabsTrigger value="snippets">Snippets</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="adoptions" className="mt-6">
+          <AdoptionsDashboard />
+        </TabsContent>
 
         <TabsContent value="projects" className="mt-6">
           {userProjects.length === 0 ? (

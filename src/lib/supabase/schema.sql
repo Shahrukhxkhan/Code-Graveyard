@@ -39,7 +39,10 @@ create type adoption_status as enum (
   'pending',
   'accepted',
   'rejected',
-  'abandoned'
+  'abandoned',
+  'completed',
+  'abandoned_by_adopter',
+  'superseded'
 );
 
 -- PROJECTS TABLE (the "graves")
@@ -120,6 +123,7 @@ create table public.adoptions (
 
   message text not null,
   status adoption_status default 'pending',
+  responded_by_deadline timestamptz,
 
   created_at timestamptz default now(),
   updated_at timestamptz default now()
@@ -543,4 +547,198 @@ drop trigger if exists trigger_notify_adopter_on_status_update on public.adoptio
 create trigger trigger_notify_adopter_on_status_update
   after update on public.adoptions
   for each row execute function notify_adopter_on_adoption_status_update();
+
+-- ============================================================================
+-- CONTENT MODERATION SYSTEM
+-- ============================================================================
+
+alter table public.users
+  add column if not exists is_admin boolean default false;
+
+create or replace function prevent_user_admin_mutation()
+returns trigger as $$
+begin
+  if (NEW.is_admin is distinct from OLD.is_admin) then
+    if (current_setting('role', true) not in ('service_role', 'postgres', 'supabase_admin')) then
+      NEW.is_admin := OLD.is_admin;
+    end if;
+  end if;
+  return NEW;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists trigger_prevent_admin_mutation on public.users;
+create trigger trigger_prevent_admin_mutation
+  before update on public.users
+  for each row execute function prevent_user_admin_mutation();
+
+alter table public.projects
+  add column if not exists is_hidden boolean default false;
+
+alter table public.snippets
+  add column if not exists is_hidden boolean default false;
+
+create table if not exists public.reports (
+  id uuid default gen_random_uuid() primary key,
+  reporter_id uuid references public.users(id) on delete cascade not null,
+  target_type text check (target_type in ('project', 'snippet')) not null,
+  target_id uuid not null,
+  reason text check (reason in ('spam', 'harassment', 'plagiarism', 'inappropriate', 'other')) not null,
+  details text,
+  status text check (status in ('pending', 'reviewed', 'dismissed', 'actioned')) default 'pending' not null,
+  created_at timestamptz default now() not null,
+  reviewed_at timestamptz,
+  reviewed_by uuid references public.users(id) on delete set null,
+  constraint unique_user_target_report unique (reporter_id, target_type, target_id)
+);
+
+alter table public.reports enable row level security;
+
+drop policy if exists "Authenticated users can insert reports" on public.reports;
+create policy "Authenticated users can insert reports"
+  on public.reports for insert
+  with check (auth.uid() = reporter_id);
+
+drop policy if exists "Users can view own reports or admins view all" on public.reports;
+create policy "Users can view own reports or admins view all"
+  on public.reports for select
+  using (
+    auth.uid() = reporter_id or
+    exists (
+      select 1 from public.users
+      where id = auth.uid() and is_admin = true
+    )
+  );
+
+drop policy if exists "Admins can update reports" on public.reports;
+create policy "Admins can update reports"
+  on public.reports for update
+  using (
+    exists (
+      select 1 from public.users
+      where id = auth.uid() and is_admin = true
+    )
+  );
+
+-- AI-GENERATED SUMMARIES
+alter table public.projects
+  add column if not exists summary text,
+  add column if not exists summary_generated_at timestamptz;
+
+-- PGVECTOR SEMANTIC SEARCH
+create extension if not exists vector;
+
+alter table public.projects
+  add column if not exists embedding vector(1536);
+
+create index if not exists idx_projects_embedding_hnsw
+  on public.projects using hnsw (embedding vector_cosine_ops);
+
+-- SIMILAR PROJECTS RECOMMENDATION RPC
+create or replace function get_similar_projects(
+  target_project_id uuid,
+  match_limit int default 4
+)
+returns table (
+  id uuid,
+  title text,
+  tagline text,
+  stage_of_death project_stage,
+  primary_reason abandonment_reason,
+  summary text,
+  time_invested_hours integer,
+  date_abandoned date,
+  is_adoptable boolean,
+  is_anonymous boolean,
+  user_id uuid,
+  shared_tag_names text[],
+  combined_score float
+)
+language plpgsql
+security definer
+as $$
+begin
+  return query
+  with tag_counts as (
+    select tag_id, count(*)::float as cnt
+    from public.project_tags
+    group by tag_id
+  ),
+  target_tags as (
+    select tag_id
+    from public.project_tags
+    where project_id = target_project_id
+  ),
+  target_project as (
+    select id, stage_of_death, primary_reason, embedding
+    from public.projects
+    where id = target_project_id
+  ),
+  candidate_tag_scores as (
+    select
+      pt.project_id,
+      sum(1.0 / (log(2, tc.cnt + 1.0) + 0.1)) as tag_score,
+      count(distinct pt.tag_id) as shared_tag_count,
+      array_agg(t.name) as shared_tag_names
+    from public.project_tags pt
+    join target_tags tt on pt.tag_id = tt.tag_id
+    join tag_counts tc on pt.tag_id = tc.tag_id
+    join public.tags t on pt.tag_id = t.id
+    where pt.project_id <> target_project_id
+    group by pt.project_id
+  ),
+  candidate_scores as (
+    select
+      p.id as project_id,
+      coalesce(cts.tag_score, 0.0) as tag_score,
+      coalesce(cts.shared_tag_count, 0) as shared_tag_count,
+      coalesce(cts.shared_tag_names, array[]::text[]) as shared_tag_names,
+      case
+        when tp.embedding is not null and p.embedding is not null then
+          (1.0 - (p.embedding <=> tp.embedding))
+        else null
+      end as embedding_similarity,
+      (case when p.stage_of_death = tp.stage_of_death then 0.5 else 0.0 end) +
+      (case when p.primary_reason = tp.primary_reason then 0.5 else 0.0 end) as fallback_score
+    from public.projects p
+    cross join target_project tp
+    left join candidate_tag_scores cts on p.id = cts.project_id
+    where p.id <> target_project_id
+      and coalesce(p.is_hidden, false) = false
+  ),
+  ranked_candidates as (
+    select
+      cs.*,
+      case
+        when cs.embedding_similarity is not null then
+          ((0.4 * cs.tag_score) + (0.6 * cs.embedding_similarity) + (0.1 * cs.fallback_score))::float
+        else
+          (cs.tag_score + (0.2 * cs.fallback_score))::float
+      end as combined_score
+    from candidate_scores cs
+    where cs.tag_score > 0 or cs.embedding_similarity is not null or cs.fallback_score > 0
+  )
+  select
+    p.id,
+    p.title,
+    p.tagline,
+    p.stage_of_death,
+    p.primary_reason,
+    p.summary,
+    p.time_invested_hours,
+    p.date_abandoned,
+    p.is_adoptable,
+    p.is_anonymous,
+    p.user_id,
+    rc.shared_tag_names,
+    rc.combined_score
+  from ranked_candidates rc
+  join public.projects p on rc.project_id = p.id
+  order by rc.combined_score desc, p.created_at desc
+  limit match_limit;
+end;
+$$;
+
+
+
 

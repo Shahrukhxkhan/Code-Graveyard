@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { format, formatDistanceToNow, parseISO } from "date-fns";
-import { Bookmark, Copy, ExternalLink, Share2 } from "lucide-react";
+import { Bookmark, Copy, ExternalLink, Flag, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { ReportModal } from "@/components/shared/ReportModal";
+import { SimilarProjects } from "@/components/projects/SimilarProjects";
 import { useAuth } from "@/hooks/useAuth";
 import { createClient } from "@/lib/supabase/client";
 
@@ -52,8 +54,11 @@ export type ProjectDisplay = {
   date_started?: string | null;
   date_abandoned?: string | null;
   github_url?: string | null;
+  demo_url?: string | null;
   is_adoptable?: boolean | null;
   is_anonymous?: boolean | null;
+  summary?: string | null;
+  summary_generated_at?: string | null;
   view_count?: number | null;
   user?: UserDisplay | null;
   tags?: TagDisplay[];
@@ -82,6 +87,51 @@ export function ProjectDetailClient({ project, snippets }: Props) {
   const [saved, setSaved] = useState(false);
   const [adoptionMessage, setAdoptionMessage] = useState("");
   const [adoptionLoading, setAdoptionLoading] = useState(false);
+  
+  // Moderation state
+  const [reportModal, setReportModal] = useState<{
+    isOpen: boolean;
+    type: "project" | "snippet";
+    id: string;
+    title: string;
+  }>({
+    isOpen: false,
+    type: "project",
+    id: "",
+    title: "",
+  });
+
+  const openReport = (type: "project" | "snippet", id: string, title: string) => {
+    setReportModal({ isOpen: true, type, id, title });
+  };
+
+  // ── AI Summary State & Regenerate Handler ─────────────────────────────────
+  const [summaryText, setSummaryText] = useState<string | null>(project.summary || null);
+  const [isRegeneratingSummary, setIsRegeneratingSummary] = useState(false);
+
+  const handleRegenerateSummary = async () => {
+    setIsRegeneratingSummary(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/generate-summary?manual=true`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to generate AI summary");
+        return;
+      }
+      if (data.summary) {
+        setSummaryText(data.summary);
+        toast.success("AI summary updated! ✨");
+      } else {
+        toast.info(data.message || "Using tagline fallback.");
+      }
+    } catch {
+      toast.error("Failed to generate AI summary");
+    } finally {
+      setIsRegeneratingSummary(false);
+    }
+  };
 
   // ── Anti-Inflation View Count Increment ──────────────────────────────────
   // Uses a combination of client-side sessionStorage debouncing and a persistent
@@ -234,6 +284,40 @@ export function ProjectDetailClient({ project, snippets }: Props) {
         <h1 className="text-3xl font-bold text-white">{project.title}</h1>
         <p className="text-xl text-zinc-400">{project.tagline}</p>
 
+        {summaryText ? (
+          <div className="mt-3 rounded-xl border border-violet-500/30 bg-violet-950/20 p-4 text-zinc-200">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-xs font-semibold uppercase tracking-wider text-violet-400">
+                ✨ AI Post-Mortem Insight
+              </span>
+              {user && (
+                <button
+                  type="button"
+                  disabled={isRegeneratingSummary}
+                  onClick={handleRegenerateSummary}
+                  className="text-xs text-violet-400 hover:text-violet-300 hover:underline disabled:opacity-50"
+                >
+                  {isRegeneratingSummary ? "Regenerating..." : "Regenerate summary"}
+                </button>
+              )}
+            </div>
+            <p className="text-base italic text-white">&quot;{summaryText}&quot;</p>
+          </div>
+        ) : (
+          user && (
+            <div className="mt-2">
+              <button
+                type="button"
+                disabled={isRegeneratingSummary}
+                onClick={handleRegenerateSummary}
+                className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/40 bg-violet-950/30 px-3 py-1.5 text-xs text-violet-300 hover:bg-violet-900/40 transition-colors"
+              >
+                ✨ {isRegeneratingSummary ? "Generating AI Summary..." : "Generate AI Summary"}
+              </button>
+            </div>
+          )
+        )}
+
         <div className="flex flex-wrap gap-3 text-sm text-zinc-400">
           {project.time_invested_hours != null && (
             <span>⏱ {project.time_invested_hours} hours</span>
@@ -313,6 +397,15 @@ export function ProjectDetailClient({ project, snippets }: Props) {
                 </a>
               </Button>
             )}
+
+            <Button
+              variant="outline"
+              className="border-zinc-700 bg-zinc-900 text-zinc-300 hover:text-red-400 hover:border-red-500/40 transition-colors"
+              onClick={() => openReport("project", project.id, project.title)}
+            >
+              <Flag className="mr-1.5 h-4 w-4 text-red-400" />
+              Report
+            </Button>
           </div>
         </div>
       </div>
@@ -374,7 +467,17 @@ export function ProjectDetailClient({ project, snippets }: Props) {
                     <h3 className="font-semibold text-white">{snippet.title}</h3>
                     <p className="text-sm text-zinc-400">{snippet.description}</p>
                   </div>
-                  <Badge className="bg-violet-600/20 text-violet-300">{snippet.language}</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-violet-600/20 text-violet-300">{snippet.language}</Badge>
+                    <button
+                      type="button"
+                      title="Report Snippet"
+                      onClick={() => openReport("snippet", snippet.id, snippet.title)}
+                      className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-red-400 transition-colors"
+                    >
+                      <Flag className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
                 <div className="relative mt-4">
                   <pre className="code-block">
@@ -420,6 +523,17 @@ export function ProjectDetailClient({ project, snippets }: Props) {
           </Button>
         </section>
       )}
+
+      <SimilarProjects projectId={project.id} />
+
+      <ReportModal
+        isOpen={reportModal.isOpen}
+        onClose={() => setReportModal((prev) => ({ ...prev, isOpen: false }))}
+        targetType={reportModal.type}
+        targetId={reportModal.id}
+        targetTitle={reportModal.title}
+      />
     </div>
   );
 }
+

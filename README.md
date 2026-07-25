@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Code-Graveyard 🪦
 
-## Getting Started
+[![CI/CD Pipeline](https://github.com/OWNER/Code-Graveyard/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/Code-Graveyard/actions/workflows/ci.yml)
 
-First, run the development server:
+A developer platform for sharing abandoned side projects, distilling post-mortems, enabling project adoptions, and discovering failed projects by cause of death or semantic meaning.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 🚀 Tech Stack
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Framework**: Next.js 14 (App Router) + TypeScript
+- **Database & Auth**: Supabase (PostgreSQL, RLS Policies)
+- **Vector Search**: `pgvector` with HNSW cosine similarity index
+- **AI Integration**: Anthropic API (`claude-sonnet-4-6`) & OpenAI API (`text-embedding-3-small`)
+- **Styling**: Tailwind CSS + Shadcn UI + Lucide Icons
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## ⚙️ Setup & Local Development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Clone repository and install dependencies**:
+   ```bash
+   npm install
+   ```
 
-## Learn More
+2. **Configure environment variables**:
+   Copy `.env.example` to `.env.local` and set required keys:
+   ```bash
+   cp .env.example .env.local
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+3. **Run development server**:
+   ```bash
+   npm run dev
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🧪 Testing & CI/CD Pipeline
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Run linter**: `npm run lint`
+- **Run type-check**: `npm run type-check`
+- **Run TypeScript test suites**: `npm test`
+- **Run production build**: `npm run build`
 
-## Deploy on Vercel
+Automated CI/CD runs on every pull request and push to `main` via GitHub Actions (`.github/workflows/ci.yml`).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🛡️ Production Error Monitoring & Sentry Alert Rules
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Error tracking and performance monitoring are integrated via `@sentry/nextjs`.
+
+### Recommended Sentry Dashboard Alert Rules
+1. **Error Rate Spike Alert**:
+   - **Condition**: Count of unhandled exceptions > 10 in 5 minutes.
+   - **Target**: PagerDuty / Slack `#dev-alerts`.
+   - **Purpose**: Detect immediate system-wide outages or deployment regressions.
+2. **Adoption Flow Error Alert**:
+   - **Condition**: Any error with tag `feature: adoptions_resolve`.
+   - **Target**: High-priority notification.
+   - **Purpose**: Immediate alert on dispute resolution, handoff, or status transition failures.
+3. **Auth & Privacy Leak Safeguard Alert**:
+   - **Condition**: Any captured exception containing unauthorized Supabase mutation errors.
+   - **Target**: Security team notification.
+

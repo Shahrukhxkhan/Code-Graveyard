@@ -20,6 +20,10 @@ async function fetchProjectData(
       .maybeSingle();
 
     if (data) {
+      if (data.is_hidden) {
+        return null;
+      }
+
       const tags = (data.project_tags ?? [])
         .map((pt: any) => pt.tag)
         .filter(Boolean);
@@ -33,7 +37,8 @@ async function fetchProjectData(
       const { data: snippetsData } = await supabase
         .from("snippets")
         .select("*")
-        .eq("project_id", id);
+        .eq("project_id", id)
+        .eq("is_hidden", false);
 
       return {
         project,

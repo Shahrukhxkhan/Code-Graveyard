@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Copy, Search } from "lucide-react";
+import { Copy, Flag, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ReportModal } from "@/components/shared/ReportModal";
 import { MOCK_PROJECTS, MOCK_SNIPPETS } from "@/lib/mock-data";
 
 function highlightCode(code: string) {
@@ -30,6 +31,16 @@ export default function SnippetsPage() {
   const [language, setLanguage] = useState("all");
   const [standaloneOnly, setStandaloneOnly] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const [reportModal, setReportModal] = useState<{
+    isOpen: boolean;
+    id: string;
+    title: string;
+  }>({
+    isOpen: false,
+    id: "",
+    title: "",
+  });
 
   const languages = useMemo(
     () => Array.from(new Set(MOCK_SNIPPETS.map((snippet) => snippet.language))),
@@ -104,6 +115,20 @@ export default function SnippetsPage() {
                   {snippet.is_standalone ? (
                     <Badge className="bg-green-600/20 text-green-300">Standalone</Badge>
                   ) : null}
+                  <button
+                    type="button"
+                    title="Report Snippet"
+                    onClick={() =>
+                      setReportModal({
+                        isOpen: true,
+                        id: snippet.id,
+                        title: snippet.title,
+                      })
+                    }
+                    className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-red-400 transition-colors"
+                  >
+                    <Flag className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
               <p className="mt-2 text-sm text-zinc-400">{snippet.description}</p>
@@ -134,6 +159,15 @@ export default function SnippetsPage() {
           );
         })}
       </div>
+
+      <ReportModal
+        isOpen={reportModal.isOpen}
+        onClose={() => setReportModal((prev) => ({ ...prev, isOpen: false }))}
+        targetType="snippet"
+        targetId={reportModal.id}
+        targetTitle={reportModal.title}
+      />
     </div>
   );
 }
+

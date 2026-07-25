@@ -18,6 +18,7 @@ export async function GET(request: Request) {
         .from("projects")
         .select("*, users:users(id, username, avatar_url, full_name), project_tags(tag:tags(*))")
         .eq("id", id)
+        .eq("is_hidden", false)
         .maybeSingle();
 
       if (error) {
@@ -47,9 +48,66 @@ export async function GET(request: Request) {
 
     const listColumns = "id, title, tagline, stage_of_death, primary_reason, time_invested_hours, date_abandoned, is_adoptable, is_anonymous, view_count, created_at, user_id, users:users(id, username, avatar_url, full_name), project_tags(tag:tags(*))";
 
+    const wordCount = q ? q.trim().split(/\s+/).length : 0;
+    const isSemanticRequested = searchParams.get("semantic") === "true";
+    const isSemanticMode = Boolean(q && (isSemanticRequested || wordCount > 3));
+
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+
+    // ── SEMANTIC EMBEDDING SEARCH PATH ──────────────────────────────────────
+    if (isSemanticMode && openaiApiKey) {
+      try {
+        const embRes = await fetch("https://api.openai.com/v1/embeddings", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${openaiApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "text-embedding-3-small",
+            input: q,
+          }),
+        });
+
+        if (embRes.ok) {
+          const embData = await embRes.json();
+          const queryVector = embData?.data?.[0]?.embedding;
+
+          if (queryVector && Array.isArray(queryVector)) {
+            const { data: rpcData, error: rpcErr } = await supabase.rpc(
+              "match_projects_semantic",
+              {
+                query_embedding: JSON.stringify(queryVector),
+                match_threshold: 0.0,
+                match_count: limit,
+                filter_stage: stage || "all",
+                filter_reason: cause || "all",
+                filter_adoptable: adoptable,
+              }
+            );
+
+            if (!rpcErr && rpcData && rpcData.length > 0) {
+              const semanticProjects = rpcData.map((p: any) => ({
+                ...p,
+                user: p.users ?? null,
+                tags: [],
+              }));
+
+              return NextResponse.json(sanitizeProjects(semanticProjects));
+            }
+          }
+        }
+      } catch (semErr) {
+        console.error("[Semantic Search Exception]:", semErr);
+        // Fall through to trigram keyword search on failure
+      }
+    }
+
+    // ── KEYWORD TRIGRAM SEARCH FALLBACK ─────────────────────────────────────
     let query = supabase
       .from("projects")
-      .select(listColumns);
+      .select(listColumns)
+      .eq("is_hidden", false);
 
     if (q) {
       query = query.or(`title.ilike.%${q}%,tagline.ilike.%${q}%`);
@@ -210,6 +268,21 @@ export async function POST(request: Request) {
         console.error("Error inserting project tags:", tagErr);
       }
     }
+
+    // Fire-and-forget AI summary generation trigger
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    fetch(`${siteUrl}/api/projects/${projectId}/generate-summary`, {
+      method: "POST",
+    }).catch((sumErr) => {
+      console.error("[AI Summary Trigger Error]:", sumErr);
+    });
+
+    // Fire-and-forget vector embedding generation trigger
+    fetch(`${siteUrl}/api/projects/${projectId}/generate-embedding`, {
+      method: "POST",
+    }).catch((embErr) => {
+      console.error("[Vector Embedding Trigger Error]:", embErr);
+    });
 
     return NextResponse.json({ id: projectId }, { status: 201 });
   } catch (err: any) {

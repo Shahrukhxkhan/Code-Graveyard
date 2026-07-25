@@ -19,6 +19,7 @@ export function ProjectFilters() {
   const [stage, setStage] = useState("all");
   const [reason, setReason] = useState("all");
   const [adoptableOnly, setAdoptableOnly] = useState(false);
+  const [isSemantic, setIsSemantic] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -29,11 +30,13 @@ export function ProjectFilters() {
     const s = searchParams.get("stage") ?? "all";
     const r = searchParams.get("cause") ?? searchParams.get("reason") ?? "all";
     const a = searchParams.get("adoptable") === "true" || searchParams.get("adoptable") === "1";
+    const sem = searchParams.get("semantic") === "true";
     
     setQuery((prev) => (prev !== q ? q : prev));
     setStage(s);
     setReason(r);
     setAdoptableOnly(a);
+    setIsSemantic(sem);
     const tags = searchParams.get("tags")?.split(",").filter(Boolean) ?? [];
     setSelectedTags(tags);
   }, [searchParams]);
@@ -139,7 +142,27 @@ export function ProjectFilters() {
           Adoptable Only
         </Button>
 
-        {hasFilters ? (
+        {(() => {
+          const isSemanticActive = isSemantic || (query.trim().split(/\s+/).length > 3 && query.trim().length > 0);
+          return (
+            <Button
+              type="button"
+              title="Toggle AI Semantic Search"
+              onClick={() => {
+                const next = !isSemantic;
+                setIsSemantic(next);
+                const params = new URLSearchParams(Array.from(searchParams.entries()));
+                if (next) params.set("semantic", "true"); else params.delete("semantic");
+                router.replace(`${window.location.pathname}?${params.toString()}`);
+              }}
+              className={isSemanticActive ? "bg-violet-600 hover:bg-violet-500 text-white" : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"}
+            >
+              ✨ {isSemanticActive ? "Semantic Search Active" : "Search by Meaning"}
+            </Button>
+          );
+        })()}
+
+        {hasFilters || isSemantic ? (
           <Button
             type="button"
             variant="ghost"
@@ -149,6 +172,7 @@ export function ProjectFilters() {
               setStage("all");
               setReason("all");
               setAdoptableOnly(false);
+              setIsSemantic(false);
               router.replace(window.location.pathname);
             }}
           >

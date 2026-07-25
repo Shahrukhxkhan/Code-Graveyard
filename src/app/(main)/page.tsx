@@ -11,8 +11,8 @@ import { sanitizeProjects } from "@/lib/utils";
 async function fetchCounts() {
   try {
     const supabase = createServerClient();
-    const projectsRes = await supabase.from("projects").select("id", { count: "exact", head: true });
-    const snippetsRes = await supabase.from("snippets").select("id", { count: "exact", head: true });
+    const projectsRes = await supabase.from("projects").select("id", { count: "exact", head: true }).eq("is_hidden", false);
+    const snippetsRes = await supabase.from("snippets").select("id", { count: "exact", head: true }).eq("is_hidden", false);
     const adoptionsRes = await supabase.from("adoptions").select("id", { count: "exact", head: true });
 
     return {
@@ -41,7 +41,8 @@ async function fetchProjects(filters: FetchFilters): Promise<ProjectWithRelation
     const supabase = createServerClient();
     let query = supabase
       .from("projects")
-      .select(CARD_PROJECT_COLUMNS);
+      .select(CARD_PROJECT_COLUMNS)
+      .eq("is_hidden", false);
 
     if (filters.q) {
       query = query.or(`title.ilike.%${filters.q}%,tagline.ilike.%${filters.q}%`);
