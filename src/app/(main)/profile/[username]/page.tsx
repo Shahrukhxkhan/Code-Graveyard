@@ -9,9 +9,8 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { MOCK_PROJECTS, MOCK_SNIPPETS, MOCK_USERS } from "@/lib/mock-data";
 
-import type { ProjectWithRelations } from "@/types";
-
 import { AdoptionsDashboard } from "@/components/profile/AdoptionsDashboard";
+import { ProfileSettings } from "@/components/profile/ProfileSettings";
 
 export default function ProfilePage({ params }: { params: { username: string } }) {
   const user = MOCK_USERS.find((item) => item.username === params.username);
@@ -73,12 +72,17 @@ export default function ProfilePage({ params }: { params: { username: string } }
         <TabsList className="bg-zinc-900">
           <TabsTrigger value="projects">Buried Projects ({userProjects.length})</TabsTrigger>
           <TabsTrigger value="adoptions">Adoptions Management</TabsTrigger>
+          <TabsTrigger value="settings">Preferences</TabsTrigger>
           <TabsTrigger value="saved">Saved</TabsTrigger>
           <TabsTrigger value="snippets">Snippets</TabsTrigger>
         </TabsList>
 
         <TabsContent value="adoptions" className="mt-6">
           <AdoptionsDashboard />
+        </TabsContent>
+
+        <TabsContent value="settings" className="mt-6">
+          <ProfileSettings />
         </TabsContent>
 
         <TabsContent value="projects" className="mt-6">

@@ -739,6 +739,15 @@ begin
 end;
 $$;
 
+-- WEEKLY DIGEST EMAIL OPT-IN
+alter table public.users
+  add column if not exists digest_opted_in boolean default true;
+
+create index if not exists idx_users_digest_opted_in
+  on public.users (digest_opted_in)
+  where digest_opted_in = true;
+
+
 
 
 

@@ -12,7 +12,7 @@ export async function GET() {
 
     const { data: profile, error } = await supabase
       .from("users")
-      .select("email_notifications_enabled")
+      .select("email_notifications_enabled, digest_opted_in")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -22,6 +22,7 @@ export async function GET() {
 
     return NextResponse.json({
       email_notifications_enabled: profile?.email_notifications_enabled ?? true,
+      digest_opted_in: profile?.digest_opted_in ?? true,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Internal Server Error" }, { status: 500 });
@@ -38,15 +39,23 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    const { email_notifications_enabled } = body;
+    const { email_notifications_enabled, digest_opted_in } = body;
 
-    if (typeof email_notifications_enabled !== "boolean") {
-      return NextResponse.json({ error: "email_notifications_enabled must be a boolean" }, { status: 400 });
+    const updates: Record<string, boolean> = {};
+    if (typeof email_notifications_enabled === "boolean") {
+      updates.email_notifications_enabled = email_notifications_enabled;
+    }
+    if (typeof digest_opted_in === "boolean") {
+      updates.digest_opted_in = digest_opted_in;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: "No valid preference fields provided" }, { status: 400 });
     }
 
     const { error } = await supabase
       .from("users")
-      .update({ email_notifications_enabled })
+      .update(updates)
       .eq("id", user.id);
 
     if (error) {
@@ -55,7 +64,7 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({
       success: true,
-      email_notifications_enabled,
+      ...updates,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Internal Server Error" }, { status: 500 });

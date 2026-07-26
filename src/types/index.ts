@@ -30,6 +30,8 @@ export type User = {
   github_username: string | null;
   website_url: string | null;
   is_admin?: boolean | null;
+  email_notifications_enabled?: boolean | null;
+  digest_opted_in?: boolean | null;
   created_at: string | null;
   updated_at: string | null;
 };
