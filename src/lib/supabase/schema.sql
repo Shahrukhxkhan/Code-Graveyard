@@ -747,6 +747,66 @@ create index if not exists idx_users_digest_opted_in
   on public.users (digest_opted_in)
   where digest_opted_in = true;
 
+-- LEADERBOARD STATS VIEW & USER BADGES SYSTEM
+create or replace view public.leaderboard_stats as
+select
+  u.id as user_id,
+  u.username,
+  u.full_name,
+  u.avatar_url,
+  coalesce(p_counts.total_projects_buried, 0)::int as total_projects_buried,
+  coalesce(p_counts.total_views_received, 0)::int as total_views_received,
+  coalesce(s_counts.total_snippets_salvaged, 0)::int as total_snippets_salvaged,
+  coalesce(a_owner_counts.completed_as_owner, 0)::int as total_adoptions_completed_as_owner,
+  coalesce(a_adopter_counts.completed_as_adopter, 0)::int as total_adoptions_completed_as_adopter,
+  (coalesce(a_owner_counts.completed_as_owner, 0) + coalesce(a_adopter_counts.completed_as_adopter, 0))::int as total_adoptions_completed
+from public.users u
+left join (
+  select user_id, count(*) as total_projects_buried, coalesce(sum(view_count), 0) as total_views_received
+  from public.projects
+  where is_hidden = false
+  group by user_id
+) p_counts on u.id = p_counts.user_id
+left join (
+  select user_id, count(*) as total_snippets_salvaged
+  from public.snippets
+  where is_hidden = false
+  group by user_id
+) s_counts on u.id = s_counts.user_id
+left join (
+  select p.user_id, count(*) as completed_as_owner
+  from public.adoptions a
+  join public.projects p on a.project_id = p.id
+  where a.status = 'completed'
+  group by p.user_id
+) a_owner_counts on u.id = a_owner_counts.user_id
+left join (
+  select adopter_id, count(*) as completed_as_adopter
+  from public.adoptions
+  where status = 'completed'
+  group by adopter_id
+) a_adopter_counts on u.id = a_adopter_counts.adopter_id;
+
+create table if not exists public.user_badges (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.users(id) on delete cascade not null,
+  badge_key text not null,
+  earned_at timestamptz default now(),
+  constraint user_badge_unique unique (user_id, badge_key)
+);
+
+create table if not exists public.weekly_leaderboard_snapshots (
+  id uuid default gen_random_uuid() primary key,
+  snapshot_date date default current_date,
+  user_id uuid references public.users(id) on delete cascade not null,
+  category text not null,
+  rank integer not null,
+  stat_value integer not null,
+  created_at timestamptz default now(),
+  constraint snapshot_unique unique (snapshot_date, category, user_id)
+);
+
+
 
 
 

@@ -9,8 +9,10 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { MOCK_PROJECTS, MOCK_SNIPPETS, MOCK_USERS } from "@/lib/mock-data";
 
+import type { ProjectWithRelations } from "@/types";
 import { AdoptionsDashboard } from "@/components/profile/AdoptionsDashboard";
 import { ProfileSettings } from "@/components/profile/ProfileSettings";
+import { ProfileBadges } from "@/components/profile/ProfileBadges";
 
 export default function ProfilePage({ params }: { params: { username: string } }) {
   const user = MOCK_USERS.find((item) => item.username === params.username);
@@ -36,6 +38,9 @@ export default function ProfilePage({ params }: { params: { username: string } }
               <h1 className="text-2xl font-bold text-white">{user.full_name}</h1>
               <p className="text-zinc-400">@{user.username}</p>
               <p className="mt-2 text-zinc-300">{user.bio}</p>
+              <div className="mt-3">
+                <ProfileBadges badgeKeys={["gravedigger", "necromancer"]} size="sm" />
+              </div>
               <div className="mt-3 flex items-center gap-3">
                 <a href={`https://github.com/${user.github_username}`} className="text-zinc-400 hover:text-white">
                   <Globe className="h-4 w-4" />

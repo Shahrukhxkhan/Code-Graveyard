@@ -17,6 +17,8 @@ A developer platform for publishing abandoned side projects, distilling post-mor
 - **🤝 Dispute Handling & Multi-Adopter Resolution**: End-to-end adoption management flow with 14-day handoff deadlines (`responded_by_deadline`), automatic candidate superseding on accept, non-responsive adopter abandonment reopening (`is_adoptable = true`), applicant re-application, and real-time dashboard state management.
 - **🛡️ Content Moderation & RLS Security**: Moderation queue (`/admin/reports`) guarded by server-side `is_admin` checks, rate-limited user reporting (5 reports/hr), multi-level Row Level Security policies, and hidden content (`is_hidden = true`) filtering.
 - **👁️ Anti-Inflation View Counter**: Atomic deduplication RPC (`increment_project_views`) combining client debouncing with persistent session fingerprints.
+- **📧 Weekly Digest Email System**: Automated weekly email summarising newly adoptable projects and aggregate platform stats, batch-sent in 50-recipient chunks with single-click signed HMAC unsubscribe links and empty-digest skipping.
+- **🏆 Public Leaderboard & Profile Badges**: Sortable rankings (`/leaderboard`) by Most Adopted, Most Salvaged Snippets, Most Buried, and Most Viewed, supported by `leaderboard_stats` view, weekly snapshots (`weekly_leaderboard_snapshots`), and automated badge evaluation (`Gravedigger`, `Necromancer`, `Salvager`, `Community Pillar`).
 - **⚙️ Automated CI/CD & Error Monitoring**: Multi-job GitHub Actions workflow (`lint-and-typecheck`, `test-ts`, `test-sql` via `pgvector` Postgres container, `build`) plus `@sentry/nextjs` production error tracking with PII scrubbing.
 
 ---

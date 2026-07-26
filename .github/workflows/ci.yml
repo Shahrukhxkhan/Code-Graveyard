@@ -75,6 +75,7 @@ jobs:
           psql -h localhost -U postgres -d postgres -f src/lib/supabase/migration_pgvector_semantic_search.sql
           psql -h localhost -U postgres -d postgres -f src/lib/supabase/migration_similar_projects.sql
           psql -h localhost -U postgres -d postgres -f src/lib/supabase/migration_weekly_digest.sql
+          psql -h localhost -U postgres -d postgres -f src/lib/supabase/migration_leaderboard_badges.sql
           psql -h localhost -U postgres -d postgres -f src/lib/supabase/migration_discovery_indexes.sql
       - name: Run RLS Test Suite
         env:

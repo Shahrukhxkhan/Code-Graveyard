@@ -119,7 +119,7 @@ async function handleWeeklyDigest(request: Request) {
       const batch = users.slice(i, i + BATCH_SIZE);
 
       const batchResults = await Promise.allSettled(
-        batch.map(async (u) => {
+        batch.map(async (u: any) => {
           const html = renderWeeklyDigestHtml(u.id, digestProjects, weeklyStats, siteUrl);
 
           // Dispatch to notification email endpoint

@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "test": "npx tsx src/lib/supabase/test-anonymity.ts && npx tsx src/lib/supabase/test-view-count.ts && npx tsx src/lib/supabase/test-moderation.ts && npx tsx src/lib/supabase/test-adoptions-resolution.ts && npx tsx src/lib/supabase/test-ai-summary.ts && npx tsx src/lib/supabase/test-semantic-search.ts && npx tsx src/lib/supabase/test-similar-projects.ts && npx tsx src/lib/supabase/test-weekly-digest.ts"
+    "test": "npx tsx src/lib/supabase/test-anonymity.ts && npx tsx src/lib/supabase/test-view-count.ts && npx tsx src/lib/supabase/test-moderation.ts && npx tsx src/lib/supabase/test-adoptions-resolution.ts && npx tsx src/lib/supabase/test-ai-summary.ts && npx tsx src/lib/supabase/test-semantic-search.ts && npx tsx src/lib/supabase/test-similar-projects.ts && npx tsx src/lib/supabase/test-weekly-digest.ts && npx tsx src/lib/supabase/test-leaderboard-badges.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
